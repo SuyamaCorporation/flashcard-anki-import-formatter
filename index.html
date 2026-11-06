@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ankiインポート用フラッシュカードフォーマッター</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+<div class="max-w-3xl mx-auto px-4 py-6">
+  <h1 class="text-2xl font-bold text-center text-green-400 mb-1">🃏 Ankiフォーマッター</h1>
+  <p class="text-center text-gray-400 text-sm mb-6">テキストをAnkiインポート形式（タブ区切り）に変換</p>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <!-- Input -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-300 mb-2" for="input-text">入力テキスト</label>
+      <textarea id="input-text" rows="10" placeholder="例（自動検出）:
+word
+front: back
+front&#9;back
+front,back,tag" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-green-400 resize-none font-mono" aria-label="入力テキスト"></textarea>
+      <div class="mt-2 flex items-center gap-2">
+        <span class="text-xs text-gray-400">検出形式:</span>
+        <span id="detected-format" class="text-xs text-green-400 font-semibold">—</span>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-semibold text-gray-300 mb-2" for="tag-input">タグ（全カードに付与）</label>
+        <input type="text" id="tag-input" placeholder="例: japanese::N1 vocabulary" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" aria-label="タグ入力">
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-gray-300 mb-2" for="reverse-side">表のみの場合の裏面（シンプル形式時）</label>
+        <input type="text" id="reverse-side" placeholder="例: （意味を入力してください）" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" aria-label="裏面デフォルト">
+      </div>
+      <div class="flex flex-col gap-2">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="include-tags" class="accent-green-400" checked aria-label="タグ列を含める">
+          <span class="text-sm text-gray-300">タグ列を含める</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="swap-sides" class="accent-green-400" aria-label="表と裏を入れ替える">
+          <span class="text-sm text-gray-300">表と裏を入れ替える</span>
+        </label>
+      </div>
+      <button onclick="processInput()" class="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold" aria-label="変換する">🔄 変換する</button>
+    </div>
+  </div>
+
+  <!-- Validation Errors -->
+  <div id="errors-box" class="hidden mb-4 bg-red-900 border border-red-600 rounded-lg p-3">
+    <p class="text-sm font-semibold text-red-300 mb-1">⚠️ 検証エラー</p>
+    <ul id="errors-list" class="text-sm text-red-200 list-disc list-inside space-y-1"></ul>
+  </div>
+
+  <!-- Preview Table -->
+  <div id="preview-section" class="hidden mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-sm font-semibold text-gray-300">プレビュー（<span id="card-count">0</span>枚）</h2>
+      <span class="text-xs text-gray-500">最大20件表示</span>
+    </div>
+    <div class="overflow-x-auto rounded-lg border border-gray-700">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-800">
+            <th class="px-3 py-2 text-left text-gray-400 w-8">#</th>
+            <th class="px-3 py-2 text-left text-gray-400">表（Front）</th>
+            <th class="px-3 py-2 text-left text-gray-400">裏（Back）</th>
+            <th id="tag-col-header" class="px-3 py-2 text-left text-gray-400">タグ</th>
+          </tr>
+        </thead>
+        <tbody id="preview-body" class="divide-y divide-gray-700"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div id="output-section" class="hidden">
+    <label class="block text-sm font-semibold text-gray-300 mb-2">Ankiインポート用出力（タブ区切り）</label>
+    <textarea id="output-text" rows="8" readonly class="w-full bg-gray-950 border border-gray-600 rounded-lg p-3 text-xs text-green-300 font-mono resize-none" aria-label="出力テキスト"></textarea>
+    <div class="flex gap-2 mt-2">
+      <button onclick="copyOutput()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm" aria-label="コピーする">📋 コピー</button>
+      <button onclick="downloadOutput()" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm" aria-label="ダウンロード">💾 ダウンロード (.txt)</button>
+      <span id="copy-msg" class="hidden text-sm text-green-400 self-center">コピーしました！</span>
+    </div>
+  </div>
+
+  <div class="mt-6 bg-gray-800 rounded-lg p-3 text-xs text-gray-400">
+    <p class="font-semibold text-gray-300 mb-1">📖 対応フォーマット</p>
+    <ul class="space-y-1">
+      <li>• <strong>シンプル</strong>: 1行1単語（裏面は別途入力）</li>
+      <li>• <strong>コロン区切り</strong>: 表: 裏</li>
+      <li>• <strong>タブ区切り</strong>: 表[TAB]裏</li>
+      <li>• <strong>CSV</strong>: 表,裏,タグ</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+let parsedCards = [];
+
+function detectFormat(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length === 0) return 'unknown';
+  const hasTab = lines.some(l => l.includes('\t'));
+  if (hasTab) return 'tab';
+  const colonCount = lines.filter(l => /^[^,\t]+:\s*.+/.test(l)).length;
+  const csvCount = lines.filter(l => l.includes(',')).length;
+  if (colonCount > lines.length / 2) return 'colon';
+  if (csvCount > lines.length / 2) return 'csv';
+  return 'simple';
+}
+
+function parseInput(text, format, reverseSide) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  return lines.map((line, i) => {
+    if (format === 'tab') {
+      const parts = line.split('\t');
+      return {front: parts[0] || '', back: parts[1] || '', tags: parts[2] || '', lineNum: i + 1};
+    } else if (format === 'colon') {
+      const idx = line.indexOf(':');
+      if (idx < 0) return {front: line, back: reverseSide || '', tags: '', lineNum: i + 1};
+      return {front: line.slice(0, idx).trim(), back: line.slice(idx + 1).trim(), tags: '', lineNum: i + 1};
+    } else if (format === 'csv') {
+      const parts = line.split(',');
+      return {front: parts[0] || '', back: parts[1] || '', tags: parts[2] || '', lineNum: i + 1};
+    } else {
+      return {front: line, back: reverseSide || '', tags: '', lineNum: i + 1};
+    }
+  });
+}
+
+function validateCards(cards) {
+  const errors = [];
+  const fronts = new Map();
+  cards.forEach(c => {
+    if (!c.front.trim()) errors.push(c.lineNum + '行目: 表面が空です');
+    if (fronts.has(c.front)) errors.push(c.lineNum + '行目: 重複する表面「' + c.front + '」');
+    fronts.set(c.front, true);
+  });
+  return errors;
+}
+
+function processInput() {
+  const text = document.getElementById('input-text').value.trim();
+  if (!text) return;
+
+  const reverseSide = document.getElementById('reverse-side').value;
+  const globalTag = document.getElementById('tag-input').value.trim();
+  const includeTags = document.getElementById('include-tags').checked;
+  const swapSides = document.getElementById('swap-sides').checked;
+
+  const format = detectFormat(text);
+  document.getElementById('detected-format').textContent = {simple:'シンプル', colon:'コロン区切り', tab:'タブ区切り', csv:'CSV', unknown:'不明'}[format];
+
+  let cards = parseInput(text, format, reverseSide);
+  if (swapSides) cards = cards.map(c => ({...c, front: c.back, back: c.front}));
+
+  const errors = validateCards(cards);
+  const errBox = document.getElementById('errors-box');
+  const errList = document.getElementById('errors-list');
+  while (errList.firstChild) errList.removeChild(errList.firstChild);
+  if (errors.length > 0) {
+    errBox.classList.remove('hidden');
+    errors.forEach(e => {
+      const li = document.createElement('li');
+      li.textContent = e;
+      errList.appendChild(li);
+    });
+  } else {
+    errBox.classList.add('hidden');
+  }
+
+  parsedCards = cards;
+  document.getElementById('card-count').textContent = cards.length;
+  document.getElementById('preview-section').classList.remove('hidden');
+  document.getElementById('output-section').classList.remove('hidden');
+  document.getElementById('tag-col-header').style.display = includeTags ? '' : 'none';
+
+  // Build preview
+  const tbody = document.getElementById('preview-body');
+  while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+  cards.slice(0, 20).forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.className = i % 2 === 0 ? 'bg-gray-900' : 'bg-gray-850';
+
+    const tdNum = document.createElement('td');
+    tdNum.className = 'px-3 py-2 text-gray-500';
+    tdNum.textContent = i + 1;
+
+    const tdFront = document.createElement('td');
+    tdFront.className = 'px-3 py-2 text-white';
+    tdFront.textContent = c.front;
+
+    const tdBack = document.createElement('td');
+    tdBack.className = 'px-3 py-2 text-gray-300';
+    tdBack.textContent = c.back;
+
+    const tdTag = document.createElement('td');
+    tdTag.className = 'px-3 py-2 text-blue-400 text-xs';
+    tdTag.style.display = includeTags ? '' : 'none';
+    tdTag.textContent = [c.tags, globalTag].filter(Boolean).join(' ');
+
+    tr.appendChild(tdNum);
+    tr.appendChild(tdFront);
+    tr.appendChild(tdBack);
+    tr.appendChild(tdTag);
+    tbody.appendChild(tr);
+  });
+
+  // Build output
+  const lines = cards.map(c => {
+    const tag = [c.tags, globalTag].filter(Boolean).join(' ');
+    if (includeTags) return c.front + '\t' + c.back + '\t' + tag;
+    return c.front + '\t' + c.back;
+  });
+  document.getElementById('output-text').value = lines.join('\n');
+}
+
+function copyOutput() {
+  const text = document.getElementById('output-text').value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const msg = document.getElementById('copy-msg');
+    msg.classList.remove('hidden');
+    setTimeout(() => msg.classList.add('hidden'), 2000);
+  });
+}
+
+function downloadOutput() {
+  const text = document.getElementById('output-text').value;
+  if (!text) return;
+  const blob = new Blob([text], {type: 'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'anki-import.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
